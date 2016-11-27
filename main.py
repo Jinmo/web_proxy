@@ -4,6 +4,11 @@ import asyncio
 from http import HTTP, HTTPConnection
 
 def hook_response(conn, headers, body):
+	host = conn.headers.get(b'host', b'')
+	if host == b'search.daum.net':
+		body = body.replace(b'Michael', b'GILBERT')
+	elif host == b'test.gilgil.net':
+		body = body.replace(b'hacking', b'ABCDEFG')
 	return headers, body
 
 def handle_echo(reader, writer):
