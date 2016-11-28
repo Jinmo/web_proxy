@@ -1,4 +1,5 @@
 EMPTY_ITEM = (None, None)
+verbose = False
 
 class HTTPHeaderDict:
 	def __init__(self, *args, **kwargs):
@@ -12,7 +13,8 @@ class HTTPHeaderDict:
 			key = self.dict[key.lower()][0] # preserve the key if exists
 		self.dict[key.lower()] = (key, value)
 	def __getitem__(self, key):
-		print('get', key)
+		if verbose:
+			print('get', key)
 		return self.get(key)
 	def __delitem__(self, key):
 		del self.dict[key.lower()]

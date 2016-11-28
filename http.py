@@ -16,6 +16,7 @@ class HTTPConnection:
 
 		self.hook = None
 
+	@asyncio.coroutine
 	def process(self):
 		host, port = None, 80
 		url = urllib.parse.urlsplit(self.url)
@@ -29,7 +30,7 @@ class HTTPConnection:
 		if url.port is not None:
 			port = url.port
 
-		print(host, port)
+		#print(host, port)
 		self.reader, self.writer = yield from asyncio.open_connection(host, port, ssl=self.ssl)
 		if url.path is not None:
 			uri = url.path
@@ -41,7 +42,7 @@ class HTTPConnection:
 		for key, value in self.headers.items():
 			payload = payload + (key + b': ' + value + b'\r\n')
 		payload = payload + b'\r\n'
-		print(payload)
+		#print(payload)
 		self.writer.write(payload)
 		yield from self._read_response()
 
@@ -49,7 +50,7 @@ class HTTPConnection:
 	def _read_response(self):
 		line = yield from self.reader.readline()
 		version, status, message = line.rstrip(b'\r\n').split(b' ', 2)
-		print(version, status, message)	
+		#print(version, status, message)	
 		body = b''
 		headers = HTTPHeaderDict()
 		while True:
@@ -60,29 +61,29 @@ class HTTPConnection:
 			value = value.lstrip(b' ')
 			headers[key] = value
 
-		print(headers)
+		#print(headers)
 		if headers.get(b'content-length') is not None:
 			contentLength = int(headers[b'content-length'])
 			body = yield from self.reader.readexactly(contentLength)
 		elif headers.get(b'transfer-encoding') is not None:
-			print('transfer-encoding', headers[b'transfer-encoding'])
+			#print('transfer-encoding', headers[b'transfer-encoding'])
 			if headers[b'transfer-encoding'].lower() == b'chunked':
 				while True:
 					line = yield from self.reader.readline()
-					print(line)
+					#print(line)
 					length = int(line, 16)
-					print(hex(length))
+					#print(hex(length))
 					if length == 0:
 						break
 					body += yield from self.reader.readexactly(length)
-					print(hex(len(body)))
+					#print(hex(len(body)))
 					#print(body)
 					yield from self.reader.readline()
 				del headers[b'transfer-encoding']
 				headers[b'content-length'] = str(len(body)).encode()
 
 		if self.hook is not None:
-			headers, body = self.hook(self, headers, body)
+			headers, body = self.hook(self, version, status, message, headers, body)
 		payload = b' '.join([version, status, message]) + b'\r\n'
 		for key, value in headers.items():
 			payload += key + b': ' + value + b'\r\n'
@@ -94,6 +95,7 @@ class HTTP:
 	def __init__(self, reader, writer):
 		self.reader = reader
 		self.writer = writer
+		self.interceptor = None
 
 	@asyncio.coroutine
 	def accept(self):
@@ -118,6 +120,16 @@ class HTTP:
 			body = yield from self.reader.readexactly(contentLength)
 
 		print(method, url, version)
+
+		if self.interceptor is not None:
+			result = self.interceptor(method=method,
+				url=url,
+				version=version,
+				headers=headers,
+				body=body,
+				client=self)
+			if result is not None:
+				return result
 
 		return HTTPConnection(method=method,
 			url=url,
