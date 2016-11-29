@@ -59,8 +59,6 @@ class HTTPConnection:
 		for key, value in self.headers.items():
 			payload = payload + (key + b': ' + value + b'\r\n')
 		payload = payload + b'\r\n'
-		if(self.ssl):
-			print(payload, self.url)
 		self.writer.write(payload)
 		self.writer.write(self.body)
 		yield from self._read_response()
@@ -80,7 +78,6 @@ class HTTPConnection:
 			value = value.lstrip(b' ')
 			headers[key] = value
 
-		#print(headers)
 		if b'content-length' in headers:
 			contentLength = int(headers[b'content-length'])
 			body = yield from self.reader.readexactly(contentLength)
@@ -113,13 +110,13 @@ class HTTPConnection:
 		self.close()
 
 	def close(self):
-		print('closing')
+		#print('closing')
 		if self.writer:
 			self.writer.close()
 			self.writer = None
 		if self.reader:
 			self.reader = None
-		print('closed')
+		#print('closed')
 
 class ForwardConnection:
 	def __init__(self, host, port, client, ssl_port_map):
@@ -134,12 +131,12 @@ class ForwardConnection:
 	def process(self):
 		local_port = random.randint(30000, 65535)
 		self.ssl_port_map[local_port] = self.host, self.port
-		print(local_port)
+		#print(local_port)
 		self.reader, self.writer = yield from asyncio.open_connection('127.0.0.1', HTTPS_PROXY_PORT, loop=loop, local_addr=('127.0.0.1', local_port))
 		self.client.writer.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
 		def relay(source, destination):
 			while True: # SSL stream here? or not
-				c = yield from source.read(8)
+				c = yield from source.read(1024)
 				if c == b'':
 					break
 				destination.write(c)
@@ -162,7 +159,7 @@ class HTTP:
 		line = yield from self.reader.readline()
 		if line == b'':
 			return None
-		print(line)
+		#print(line)
 		method, url, version = line.rstrip(b'\r\n').split(b' ', 2)
 		headers = HTTPHeaderDict()
 		body = b''
@@ -171,7 +168,6 @@ class HTTP:
 			if line in (b'\n', b'\r\n'):
 				break
 			line = line.rstrip(b'\r\n')
-			#print(line)
 			key, value = line.split(b':', 1)
 			value = value.lstrip(b' ')
 			headers[key] = value
@@ -188,7 +184,7 @@ class HTTP:
 
 		if headers.get(b'content-length') is not None:
 			contentLength = int(headers[b'content-length'])
-			print('[post reqest] reading body', contentLength)
+			#print('[post reqest] reading body', contentLength)
 			body = yield from self.reader.readexactly(contentLength)
 
 		print(method, url, version)
