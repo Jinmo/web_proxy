@@ -2,8 +2,8 @@ import os
 from sslserver import MyLoop
 
 loop = MyLoop()
-HTTP_PROXY_PORT = 20000
-HTTPS_PROXY_PORT = 20001
+HTTP_PROXY_PORT = 8080
+HTTPS_PROXY_PORT = 8081
 BIND_ADDRESS = '0.0.0.0'
 
 DOMAIN_CERT_PATH = os.path.dirname(__file__) + '/domains'
