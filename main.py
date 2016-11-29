@@ -4,6 +4,7 @@ import asyncio
 import ssl
 import sys
 import traceback
+import logging
 from http import HTTP, HTTPConnection
 from config import HTTP_PROXY_PORT, HTTPS_PROXY_PORT, BIND_ADDRESS, loop
 from util import gen_cert
@@ -37,7 +38,7 @@ class CacheConnection:
 
 	@asyncio.coroutine
 	def process(self):
-		self._read_response()
+		yield from self._read_response()
 
 def cacheable(headers):
 	if b'cache-control' in headers:
@@ -124,6 +125,8 @@ coro = asyncio.start_server(httpproxy, BIND_ADDRESS, HTTP_PROXY_PORT, loop=loop)
 coroSSL = asyncio.start_server(httpproxy, BIND_ADDRESS, HTTPS_PROXY_PORT, loop=loop)
 server = loop.run_until_complete(coro)
 sslserver = loop.run_until_complete(coroSSL)
+
+logging.disable(logging.WARNING)
 
 # Serve requests until Ctrl+C is pressed
 for socket in server.sockets:
