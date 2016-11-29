@@ -46,6 +46,8 @@ def cacheable(headers):
 		#print(cacheControl)
 		if not all((keyword not in cacheControl for keyword in NO_CACHE_KEYWORDS)):
 			return False
+	else:
+		return False
 	if b'pragma' in headers:
 		pragma = headers[b'pragma']
 		if pragma == b'no-cache':
