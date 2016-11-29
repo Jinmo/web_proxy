@@ -1,9 +1,17 @@
 #!/usr/bin/python3
 
 import asyncio
+import ssl
+import sys
+import traceback
 from http import HTTP, HTTPConnection
+from config import HTTP_PROXY_PORT, HTTPS_PROXY_PORT, BIND_ADDRESS, loop
+from util import gen_cert
 
 cache = {}
+ssl_port_map = {}
+ssl_host_map = {}
+ssl_connected_port_map = {}
 
 NO_CACHE_KEYWORDS = [
 b'no-store',
@@ -29,7 +37,7 @@ class CacheConnection:
 
 	@asyncio.coroutine
 	def process(self):
-		yield from self._read_response()
+		self._read_response()
 
 def cacheable(headers):
 	if b'cache-control' in headers:
@@ -46,7 +54,7 @@ def cacheable(headers):
 
 def hook_response(conn, version, status, message, headers, body):
 	host = conn.headers.get(b'host', b'')
-	if host == b'search.daum.net':
+	if host == b'search.daum.net' or host == b'search.naver.com': # naver, too. SSL!
 		body = body.replace(b'Michael', b'GILBERT')
 	elif host == b'test.gilgil.net':
 		body = body.replace(b'hacking', b'ABCDEFG')
@@ -65,25 +73,61 @@ def intercept_with_cache(method, url, version, headers, body, client):
 	host = headers.get(b'host', b'')
 	if b'accept-encoding' in headers:
 		if b'gzip' in headers[b'accept-encoding']:
-			headers[b'accept-encoding'] = b'none'
+			del headers[b'accept-encoding']
 	return None
 
-def handle_echo(reader, writer):
-	http = HTTP(reader, writer)
+def httpproxy(reader, writer):
+	global ssl_port_map, ssl_connected_port_map
+	host, port = writer.get_extra_info('peername')
+	if port in ssl_connected_port_map:
+		default_host, default_port = ssl_connected_port_map[port]
+		with_ssl = True
+	else:
+		default_host, default_port = None, None
+		with_ssl = False
+	http = HTTP(reader, writer, ssl_port_map,
+		default_host=default_host,
+		default_port=default_port,
+		ssl=with_ssl)
 	http.interceptor = intercept_with_cache
 	while True:
 		conn = yield from http.accept()
 		if conn is None:
 			break
 		conn.hook = hook_response
-		result = yield from conn.process()
+		try:
+			result = yield from conn.process()
+		except:
+			traceback.print_exc(file=sys.stdout)
+			writer.close()
+			return
 
-loop = asyncio.get_event_loop()
-coro = asyncio.start_server(handle_echo, '127.0.0.1', 20000, loop=loop)
+def ssl_generator(sock):
+	global ssl_host_map, ssl_port_map
+	addr, port = sock.getpeername()
+	if port not in ssl_port_map:
+		return
+	domain, dstport = ssl_port_map[port]
+	print(domain,dstport)
+	del ssl_port_map[port]
+	key_path, cert_path = gen_cert(domain, 'root/root.crt', 'root/root.key')
+	ssl_host_map[domain] = cert_path, key_path
+	ssl_connected_port_map[port] = domain, dstport
+	context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+	context.load_cert_chain(cert_path, key_path)
+	return context
+
+loop.ssl_generator = ssl_generator
+coro = asyncio.start_server(httpproxy, BIND_ADDRESS, HTTP_PROXY_PORT, loop=loop)
+coroSSL = asyncio.start_server(httpproxy, BIND_ADDRESS, HTTPS_PROXY_PORT, loop=loop)
 server = loop.run_until_complete(coro)
+sslserver = loop.run_until_complete(coroSSL)
 
 # Serve requests until Ctrl+C is pressed
-print('Serving on {}'.format(server.sockets[0].getsockname()))
+for socket in server.sockets:
+	print('Serving on {}'.format(socket.getsockname()))
+for socket in sslserver.sockets:
+	print('SSL Serving on {}'.format(socket.getsockname()))
 try:
     loop.run_forever()
 except KeyboardInterrupt:
@@ -91,5 +135,7 @@ except KeyboardInterrupt:
 
 # Close the server
 server.close()
+sslserver.close()
 loop.run_until_complete(server.wait_closed())
+loop.run_until_complete(sslserver.wait_closed())
 loop.close()
